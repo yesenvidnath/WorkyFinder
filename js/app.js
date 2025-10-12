@@ -28,7 +28,8 @@ function loadGIS() {
     tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: SCOPES,
-        callback: handleTokenResponse
+        callback: handleTokenResponse,
+        redirect_uri: window.location.origin + window.location.pathname
     });
     gisInited = true;
     maybeEnableButtons();
