@@ -4,13 +4,22 @@ let gisInited = false;
 document.addEventListener('DOMContentLoaded', initializeGoogleAPI);
 
 function initializeGoogleAPI() {
-    // Load the Google API Platform Library
-    const gapiScript = document.createElement('script');
-    gapiScript.src = 'https://apis.google.com/js/platform.js';
-    gapiScript.onload = () => {
-        gapi.load('client:auth2', initializeGapiClient);
-    };
-    document.head.appendChild(gapiScript);
+    gapi.load('client:auth2', async () => {
+        try {
+            await gapi.client.init({
+                apiKey: API_KEY,
+                clientId: CLIENT_ID,
+                discoveryDocs: [DISCOVERY_DOC],
+                scope: SCOPES,
+                cookiePolicy: 'single_host_origin'
+            });
+            gapiInited = true;
+            maybeEnableButtons();
+        } catch (err) {
+            console.error('Error initializing Google API:', err);
+            handleError(err);
+        }
+    });
 }
 
 async function initializeGapiClient() {
