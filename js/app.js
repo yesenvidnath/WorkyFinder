@@ -5,15 +5,32 @@ let gisInited = false;
 document.addEventListener('DOMContentLoaded', initializeGoogleAPI);
 
 function initializeGoogleAPI() {
+    // Load both GAPI and Google Identity Services
     gapi.load('client', initializeGapiClient);
+    loadGIS();
 }
 
 async function initializeGapiClient() {
-    await gapi.client.init({
-        apiKey: API_KEY,
-        discoveryDocs: [DISCOVERY_DOC],
+    try {
+        await gapi.client.init({
+            apiKey: API_KEY,
+            discoveryDocs: [DISCOVERY_DOC],
+        });
+        gapiInited = true;
+        maybeEnableButtons();
+    } catch (err) {
+        console.error('Error initializing GAPI client:', err);
+    }
+}
+
+function loadGIS() {
+    // Load Google Identity Services
+    tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: SCOPES,
+        callback: handleTokenResponse
     });
-    gapiInited = true;
+    gisInited = true;
     maybeEnableButtons();
 }
 
@@ -25,12 +42,18 @@ function maybeEnableButtons() {
 
 async function handleAuthClick() {
     try {
-        await gapi.client.getToken();
-        await listCalendars();
+        // Get the access token
+        tokenClient.requestAccessToken({ prompt: 'consent' });
     } catch (err) {
-        // Handle authorization
-        tokenClient.requestAccessToken({prompt: 'consent'});
+        console.error('Error getting auth token:', err);
     }
+}
+
+async function handleTokenResponse(response) {
+    if (response.error !== undefined) {
+        throw response;
+    }
+    await listCalendars();
 }
 
 async function listCalendars() {
