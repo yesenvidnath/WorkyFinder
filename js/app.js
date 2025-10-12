@@ -1,47 +1,40 @@
-let tokenClient;
 let gapiInited = false;
 let gisInited = false;
 
 document.addEventListener('DOMContentLoaded', initializeGoogleAPI);
 
 function initializeGoogleAPI() {
-    const script = document.createElement('script');
-    script.src = 'https://accounts.google.com/gsi/client';
-    script.async = true;
-    script.defer = true;
-    script.onload = () => {
-        // Load GAPI only after GIS is loaded
-        gapi.load('client', initializeGapiClient);
-        loadGIS();
+    // Load the Google API Platform Library
+    const gapiScript = document.createElement('script');
+    gapiScript.src = 'https://apis.google.com/js/platform.js';
+    gapiScript.onload = () => {
+        gapi.load('client:auth2', initializeGapiClient);
     };
-    document.head.appendChild(script);
+    document.head.appendChild(gapiScript);
 }
 
 async function initializeGapiClient() {
     try {
         await gapi.client.init({
             apiKey: API_KEY,
+            clientId: CLIENT_ID,
             discoveryDocs: [DISCOVERY_DOC],
+            scope: SCOPES
         });
+
+        // Check if already signed in
+        const authInstance = gapi.auth2.getAuthInstance();
+        if (authInstance.isSignedIn.get()) {
+            handleSignInSuccess();
+        }
+
         gapiInited = true;
+        gisInited = true;
         maybeEnableButtons();
     } catch (err) {
         console.error('Error initializing GAPI client:', err);
+        handleError(err);
     }
-}
-
-function loadGIS() {
-    // Load Google Identity Services
-    tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: CLIENT_ID,
-        scope: SCOPES,
-        callback: handleTokenResponse,
-        state: 'try_sample_request', // Added state parameter for security
-        prompt: '', // '' to show consent only when necessary
-        error_callback: handleError // Added error handling
-    });
-    gisInited = true;
-    maybeEnableButtons();
 }
 
 function handleError(err) {
@@ -58,35 +51,26 @@ function maybeEnableButtons() {
 
 async function handleAuthClick() {
     try {
-        // Clear any existing tokens
-        if(gapi.client.getToken() !== null) {
-            google.accounts.oauth2.revoke(gapi.client.getToken().access_token);
-            gapi.client.setToken('');
-        }
-        // Request new token
-        tokenClient.requestAccessToken({
-            prompt: 'consent',
-            hint: '', // Optional: Add user's email if known
+        const authInstance = gapi.auth2.getAuthInstance();
+        const user = await authInstance.signIn({
+            prompt: 'select_account'
         });
+        
+        if (user) {
+            handleSignInSuccess();
+        }
     } catch (err) {
-        console.error('Error getting auth token:', err);
+        console.error('Error during authentication:', err);
         handleError(err);
     }
 }
 
-async function handleTokenResponse(response) {
-    if (response.error !== undefined) {
-        handleError(response);
-        return;
-    }
-    
+async function handleSignInSuccess() {
     try {
-        // Set the token
-        gapi.client.setToken(response);
         document.getElementById('authorize-button').innerText = 'Refresh Authorization';
         await listCalendars();
     } catch (err) {
-        console.error('Error handling token:', err);
+        console.error('Error after sign-in:', err);
         handleError(err);
     }
 }
