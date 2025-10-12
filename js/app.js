@@ -5,9 +5,16 @@ let gisInited = false;
 document.addEventListener('DOMContentLoaded', initializeGoogleAPI);
 
 function initializeGoogleAPI() {
-    // Load both GAPI and Google Identity Services
-    gapi.load('client', initializeGapiClient);
-    loadGIS();
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+        // Load GAPI only after GIS is loaded
+        gapi.load('client', initializeGapiClient);
+        loadGIS();
+    };
+    document.head.appendChild(script);
 }
 
 async function initializeGapiClient() {
@@ -29,10 +36,18 @@ function loadGIS() {
         client_id: CLIENT_ID,
         scope: SCOPES,
         callback: handleTokenResponse,
-        redirect_uri: window.location.origin + window.location.pathname
+        state: 'try_sample_request', // Added state parameter for security
+        prompt: '', // '' to show consent only when necessary
+        error_callback: handleError // Added error handling
     });
     gisInited = true;
     maybeEnableButtons();
+}
+
+function handleError(err) {
+    console.error('Error during authentication:', err);
+    document.getElementById('authorize-button').style.display = 'block';
+    alert('Authentication error. Please try again.');
 }
 
 function maybeEnableButtons() {
@@ -43,18 +58,37 @@ function maybeEnableButtons() {
 
 async function handleAuthClick() {
     try {
-        // Get the access token
-        tokenClient.requestAccessToken({ prompt: 'consent' });
+        // Clear any existing tokens
+        if(gapi.client.getToken() !== null) {
+            google.accounts.oauth2.revoke(gapi.client.getToken().access_token);
+            gapi.client.setToken('');
+        }
+        // Request new token
+        tokenClient.requestAccessToken({
+            prompt: 'consent',
+            hint: '', // Optional: Add user's email if known
+        });
     } catch (err) {
         console.error('Error getting auth token:', err);
+        handleError(err);
     }
 }
 
 async function handleTokenResponse(response) {
     if (response.error !== undefined) {
-        throw response;
+        handleError(response);
+        return;
     }
-    await listCalendars();
+    
+    try {
+        // Set the token
+        gapi.client.setToken(response);
+        document.getElementById('authorize-button').innerText = 'Refresh Authorization';
+        await listCalendars();
+    } catch (err) {
+        console.error('Error handling token:', err);
+        handleError(err);
+    }
 }
 
 async function listCalendars() {
