@@ -1,55 +1,39 @@
+let tokenClient;
 let gapiInited = false;
 let gisInited = false;
 
 document.addEventListener('DOMContentLoaded', initializeGoogleAPI);
 
 function initializeGoogleAPI() {
-    gapi.load('client:auth2', async () => {
-        try {
-            await gapi.client.init({
-                apiKey: API_KEY,
-                clientId: CLIENT_ID,
-                discoveryDocs: [DISCOVERY_DOC],
-                scope: SCOPES,
-                cookiePolicy: 'single_host_origin'
-            });
-            gapiInited = true;
-            maybeEnableButtons();
-        } catch (err) {
-            console.error('Error initializing Google API:', err);
-            handleError(err);
-        }
-    });
+    gapi.load('client', initializeGapiClient);
+    loadGIS();
 }
 
 async function initializeGapiClient() {
     try {
         await gapi.client.init({
             apiKey: API_KEY,
-            clientId: CLIENT_ID,
-            discoveryDocs: [DISCOVERY_DOC],
-            scope: SCOPES
+            discoveryDocs: [DISCOVERY_DOC]
         });
-
-        // Check if already signed in
-        const authInstance = gapi.auth2.getAuthInstance();
-        if (authInstance.isSignedIn.get()) {
-            handleSignInSuccess();
-        }
-
         gapiInited = true;
-        gisInited = true;
         maybeEnableButtons();
     } catch (err) {
         console.error('Error initializing GAPI client:', err);
-        handleError(err);
     }
 }
 
-function handleError(err) {
-    console.error('Error during authentication:', err);
-    document.getElementById('authorize-button').style.display = 'block';
-    alert('Authentication error. Please try again.');
+function loadGIS() {
+    tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: SCOPES,
+        callback: handleTokenResponse,
+        prompt: '', // Remove 'consent' from here
+        ux_mode: 'popup'
+        // REMOVED: hosted_domain - this was causing the error
+        // REMOVED: enable_serial_consent - not needed for basic auth
+    });
+    gisInited = true;
+    maybeEnableButtons();
 }
 
 function maybeEnableButtons() {
@@ -60,28 +44,20 @@ function maybeEnableButtons() {
 
 async function handleAuthClick() {
     try {
-        const authInstance = gapi.auth2.getAuthInstance();
-        const user = await authInstance.signIn({
-            prompt: 'select_account'
-        });
-        
-        if (user) {
-            handleSignInSuccess();
-        }
+        tokenClient.requestAccessToken({ prompt: 'consent' });
     } catch (err) {
-        console.error('Error during authentication:', err);
-        handleError(err);
+        console.error('Error getting auth token:', err);
     }
 }
 
-async function handleSignInSuccess() {
-    try {
-        document.getElementById('authorize-button').innerText = 'Refresh Authorization';
-        await listCalendars();
-    } catch (err) {
-        console.error('Error after sign-in:', err);
-        handleError(err);
+async function handleTokenResponse(response) {
+    if (response.error !== undefined) {
+        console.error('Auth error:', response);
+        alert('Authentication failed. Please try again.');
+        return;
     }
+    document.getElementById('auth-section').style.display = 'none';
+    await listCalendars();
 }
 
 async function listCalendars() {
@@ -101,6 +77,7 @@ async function listCalendars() {
         document.getElementById('calendar-section').style.display = 'block';
     } catch (err) {
         console.error('Error loading calendars:', err);
+        alert('Error loading calendars. Please try signing in again.');
     }
 }
 
@@ -115,7 +92,8 @@ async function calculateHours() {
 
     const [year, month] = monthPicker.split('-');
     const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 0); // Last day of selected month
+    const endDate = new Date(year, month, 0);
+    endDate.setHours(23, 59, 59, 999);
 
     try {
         const response = await gapi.client.calendar.events.list({
@@ -134,7 +112,7 @@ async function calculateHours() {
             if (event.start.dateTime && event.end.dateTime) {
                 const start = new Date(event.start.dateTime);
                 const end = new Date(event.end.dateTime);
-                const duration = (end - start) / (1000 * 60); // Duration in minutes
+                const duration = (end - start) / (1000 * 60);
                 totalMinutes += duration;
 
                 eventBreakdown.push({
@@ -148,12 +126,10 @@ async function calculateHours() {
         const totalHours = Math.floor(totalMinutes / 60);
         const remainingMinutes = Math.round(totalMinutes % 60);
 
-        // Display results
         document.getElementById('results-section').style.display = 'block';
         document.getElementById('hours-result').innerHTML = 
             `Total Working Hours: ${totalHours} hours and ${remainingMinutes} minutes`;
 
-        // Display breakdown
         const breakdownHtml = eventBreakdown.map(event => 
             `<div class="event-item">
                 <strong>${event.date}</strong> - ${event.title}: 

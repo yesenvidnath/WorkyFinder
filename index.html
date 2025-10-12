@@ -9,6 +9,10 @@
 <body>
     <div class="container">
         <h1>Working Hours Calculator</h1>
+            <div id="port-section" style="margin-bottom: 20px;">
+                <strong>Live Port Number:</strong>
+                <span id="live-port" style="margin-left: 10px;"></span>
+            </div>
         <div id="auth-section">
             <button id="authorize-button" onclick="handleAuthClick()">Sign In with Google</button>
         </div>
@@ -28,9 +32,8 @@
         </div>
     </div>
     <script src="https://apis.google.com/js/api.js"></script>
+    <script src="https://accounts.google.com/gsi/client"></script>
     <script src="js/config.js"></script>
     <script src="js/app.js"></script>
-    <meta name="google-signin-client_id" content="YOUR_CLIENT_ID.apps.googleusercontent.com">
-    <meta name="google-signin-cookiepolicy" content="single_host_origin">
 </body>
 </html>
