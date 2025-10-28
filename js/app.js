@@ -2,13 +2,28 @@ let tokenClient;
 let gapiInited = false;
 let gisInited = false;
 let hoursChart = null;
-let currentReportData = null; // Store data for PDF generation
+let currentReportData = null;
 
 document.addEventListener('DOMContentLoaded', initializeGoogleAPI);
 
 function initializeGoogleAPI() {
     gapi.load('client', initializeGapiClient);
     loadGIS();
+    setupEventListeners();
+}
+
+function setupEventListeners() {
+    // Calculate button
+    const calculateBtn = document.getElementById('calculate-button');
+    if (calculateBtn) {
+        calculateBtn.addEventListener('click', calculateHours);
+    }
+    
+    // PDF button
+    const pdfBtn = document.getElementById('pdf-button');
+    if (pdfBtn) {
+        pdfBtn.addEventListener('click', generatePDF);
+    }
 }
 
 async function initializeGapiClient() {
@@ -21,6 +36,7 @@ async function initializeGapiClient() {
         maybeEnableButtons();
     } catch (err) {
         console.error('Error initializing GAPI client:', err);
+        showError('Error initializing Google API. Please check your API credentials in config.js');
     }
 }
 
@@ -38,7 +54,9 @@ function loadGIS() {
 
 function maybeEnableButtons() {
     if (gapiInited && gisInited) {
-        document.getElementById('authorize-button').style.visibility = 'visible';
+        const authButton = document.getElementById('authorize-button');
+        authButton.style.visibility = 'visible';
+        authButton.addEventListener('click', handleAuthClick);
     }
 }
 
@@ -47,16 +65,36 @@ async function handleAuthClick() {
         tokenClient.requestAccessToken({ prompt: 'consent' });
     } catch (err) {
         console.error('Error getting auth token:', err);
+        showError('Authentication failed. Please try again.');
     }
 }
 
 async function handleTokenResponse(response) {
     if (response.error !== undefined) {
         console.error('Auth error:', response);
-        alert('Authentication failed. Please try again.');
+        showError('Authentication failed. Please try again.');
         return;
     }
-    document.getElementById('auth-section').style.display = 'none';
+    
+    // Hide hero section with fade out
+    const authSection = document.getElementById('auth-section');
+    authSection.style.opacity = '0';
+    authSection.style.transition = 'opacity 0.5s ease-out';
+    
+    setTimeout(() => {
+        authSection.style.display = 'none';
+        document.getElementById('features').style.display = 'block';
+        document.getElementById('dashboard-section').style.display = 'block';
+        
+        // Smooth scroll to dashboard
+        setTimeout(() => {
+            document.getElementById('dashboard-section').scrollIntoView({ 
+                behavior: 'smooth', 
+                block: 'start' 
+            });
+        }, 100);
+    }, 500);
+    
     await listCalendars();
 }
 
@@ -65,7 +103,7 @@ async function listCalendars() {
         const response = await gapi.client.calendar.calendarList.list();
         const calendars = response.result.items;
         const select = document.getElementById('calendar-select');
-        select.innerHTML = '<option value="">Select a Calendar</option>';
+        select.innerHTML = '<option value="">Choose your calendar...</option>';
         
         calendars.forEach(calendar => {
             const option = document.createElement('option');
@@ -73,11 +111,9 @@ async function listCalendars() {
             option.textContent = calendar.summary;
             select.appendChild(option);
         });
-
-        document.getElementById('calendar-section').style.display = 'block';
     } catch (err) {
         console.error('Error loading calendars:', err);
-        alert('Error loading calendars. Please try signing in again.');
+        showError('Error loading calendars. Please try signing in again.');
     }
 }
 
@@ -86,9 +122,15 @@ async function calculateHours() {
     const monthPicker = document.getElementById('month-picker').value;
     
     if (!calendarId || !monthPicker) {
-        alert('Please select both a calendar and a month');
+        showError('Please select both a calendar and a month');
         return;
     }
+
+    // Show loading state
+    const calculateBtn = document.getElementById('calculate-button');
+    const originalContent = calculateBtn.innerHTML;
+    calculateBtn.disabled = true;
+    calculateBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span>Calculating...';
 
     const [year, month] = monthPicker.split('-');
     const startDate = new Date(year, month - 1, 1);
@@ -128,7 +170,11 @@ async function calculateHours() {
                 eventBreakdown.push({
                     title: event.summary,
                     duration: duration,
-                    date: start.toLocaleDateString(),
+                    date: start.toLocaleDateString('en-US', { 
+                        month: 'short', 
+                        day: 'numeric', 
+                        year: 'numeric' 
+                    }),
                     day: day
                 });
             }
@@ -139,7 +185,10 @@ async function calculateHours() {
 
         // Store data for PDF generation
         const calendarName = document.getElementById('calendar-select').selectedOptions[0].text;
-        const monthName = new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+        const monthName = new Date(year, month - 1, 1).toLocaleDateString('en-US', { 
+            month: 'long', 
+            year: 'numeric' 
+        });
         
         currentReportData = {
             calendarName: calendarName,
@@ -152,14 +201,15 @@ async function calculateHours() {
         };
 
         document.getElementById('results-section').style.display = 'block';
-        document.getElementById('hours-result').innerHTML = 
-            `${totalHours}h ${remainingMinutes}m`;
+        
+        // Animate the hours result
+        animateValue('hours-result', 0, totalMinutes, 1000, totalHours, remainingMinutes);
 
         const breakdownHtml = eventBreakdown.map(event => 
             `<tr>
                 <td>${event.date}</td>
                 <td>${event.title}</td>
-                <td>${Math.floor(event.duration / 60)}h ${Math.round(event.duration % 60)}m</td>
+                <td><strong>${Math.floor(event.duration / 60)}h ${Math.round(event.duration % 60)}m</strong></td>
             </tr>`
         ).join('');
 
@@ -167,10 +217,43 @@ async function calculateHours() {
 
         createDailyChart(dailyHours, daysInMonth);
 
+        // Smooth scroll to results
+        setTimeout(() => {
+            document.getElementById('results-section').scrollIntoView({ 
+                behavior: 'smooth', 
+                block: 'start' 
+            });
+        }, 200);
+
     } catch (err) {
         console.error('Error calculating hours:', err);
-        alert('Error calculating hours. Please try again.');
+        showError('Error calculating hours. Please try again.');
+    } finally {
+        // Reset button
+        calculateBtn.disabled = false;
+        calculateBtn.innerHTML = originalContent;
     }
+}
+
+function animateValue(id, start, end, duration, finalHours, finalMinutes) {
+    const element = document.getElementById(id);
+    const range = end - start;
+    const increment = end > start ? 1 : -1;
+    const stepTime = Math.abs(Math.floor(duration / range));
+    let current = start;
+    
+    const timer = setInterval(() => {
+        current += increment * 10;
+        if ((increment > 0 && current >= end) || (increment < 0 && current <= end)) {
+            current = end;
+            clearInterval(timer);
+            element.innerHTML = `${finalHours}h ${finalMinutes}m`;
+        } else {
+            const tempHours = Math.floor(current / 60);
+            const tempMinutes = Math.round(current % 60);
+            element.innerHTML = `${tempHours}h ${tempMinutes}m`;
+        }
+    }, stepTime);
 }
 
 function createDailyChart(dailyHours, daysInMonth) {
@@ -188,6 +271,10 @@ function createDailyChart(dailyHours, daysInMonth) {
         data.push(dailyHours[i].toFixed(2));
     }
 
+    const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+    gradient.addColorStop(0, 'rgba(99, 102, 241, 0.8)');
+    gradient.addColorStop(1, 'rgba(139, 92, 246, 0.8)');
+
     hoursChart = new Chart(ctx, {
         type: 'bar',
         data: {
@@ -195,8 +282,8 @@ function createDailyChart(dailyHours, daysInMonth) {
             datasets: [{
                 label: 'Hours',
                 data: data,
-                backgroundColor: '#2563eb',
-                borderRadius: 4,
+                backgroundColor: gradient,
+                borderRadius: 8,
                 barThickness: 'flex'
             }]
         },
@@ -204,16 +291,28 @@ function createDailyChart(dailyHours, daysInMonth) {
             responsive: true,
             maintainAspectRatio: true,
             aspectRatio: 2,
+            animation: {
+                duration: 1000,
+                easing: 'easeInOutQuart'
+            },
             plugins: {
                 legend: {
                     display: false
                 },
                 tooltip: {
-                    backgroundColor: '#0f172a',
-                    padding: 12,
+                    backgroundColor: 'rgba(17, 24, 39, 0.95)',
+                    padding: 16,
                     titleColor: '#fff',
                     bodyColor: '#fff',
-                    cornerRadius: 6,
+                    cornerRadius: 12,
+                    titleFont: {
+                        size: 14,
+                        weight: '700'
+                    },
+                    bodyFont: {
+                        size: 13,
+                        weight: '500'
+                    },
                     callbacks: {
                         label: function(context) {
                             const hours = Math.floor(context.parsed.y);
@@ -227,22 +326,26 @@ function createDailyChart(dailyHours, daysInMonth) {
                 y: {
                     beginAtZero: true,
                     grid: {
-                        color: '#e2e8f0'
+                        color: 'rgba(229, 231, 235, 0.5)',
+                        drawBorder: false
                     },
                     ticks: {
-                        color: '#64748b',
+                        color: '#6b7280',
                         font: {
-                            size: 11
-                        }
+                            size: 11,
+                            weight: '600'
+                        },
+                        padding: 10
                     },
                     title: {
                         display: true,
                         text: 'Hours',
-                        color: '#64748b',
+                        color: '#6b7280',
                         font: {
-                            size: 12,
-                            weight: '500'
-                        }
+                            size: 13,
+                            weight: '700'
+                        },
+                        padding: 10
                     }
                 },
                 x: {
@@ -250,22 +353,25 @@ function createDailyChart(dailyHours, daysInMonth) {
                         display: false
                     },
                     ticks: {
-                        color: '#64748b',
+                        color: '#6b7280',
                         font: {
-                            size: 11
+                            size: 11,
+                            weight: '600'
                         },
                         maxRotation: 0,
                         autoSkip: true,
-                        maxTicksLimit: 15
+                        maxTicksLimit: 15,
+                        padding: 10
                     },
                     title: {
                         display: true,
                         text: 'Day of Month',
-                        color: '#64748b',
+                        color: '#6b7280',
                         font: {
-                            size: 12,
-                            weight: '500'
-                        }
+                            size: 13,
+                            weight: '700'
+                        },
+                        padding: 10
                     }
                 }
             }
@@ -275,148 +381,201 @@ function createDailyChart(dailyHours, daysInMonth) {
 
 async function generatePDF() {
     if (!currentReportData) {
-        alert('Please calculate hours first before generating a report');
+        showError('Please calculate hours first before generating a report');
         return;
     }
 
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF('p', 'mm', 'a4');
-    
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    const margin = 20;
-    let yPosition = margin;
+    // Show loading state
+    const pdfBtn = document.getElementById('pdf-button');
+    const originalContent = pdfBtn.innerHTML;
+    pdfBtn.disabled = true;
+    pdfBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span>Generating...';
 
-    // Header
-    pdf.setFillColor(37, 99, 235);
-    pdf.rect(0, 0, pageWidth, 40, 'F');
-    
-    pdf.setTextColor(255, 255, 255);
-    pdf.setFontSize(24);
-    pdf.setFont(undefined, 'bold');
-    pdf.text('WorkyFinder', margin, 20);
-    
-    pdf.setFontSize(12);
-    pdf.setFont(undefined, 'normal');
-    pdf.text('Working Hours Report', margin, 30);
-
-    yPosition = 55;
-
-    // Report Info
-    pdf.setTextColor(0, 0, 0);
-    pdf.setFontSize(11);
-    pdf.setFont(undefined, 'bold');
-    pdf.text('Calendar:', margin, yPosition);
-    pdf.setFont(undefined, 'normal');
-    pdf.text(currentReportData.calendarName, margin + 30, yPosition);
-    
-    yPosition += 7;
-    pdf.setFont(undefined, 'bold');
-    pdf.text('Period:', margin, yPosition);
-    pdf.setFont(undefined, 'normal');
-    pdf.text(currentReportData.monthName, margin + 30, yPosition);
-    
-    yPosition += 7;
-    pdf.setFont(undefined, 'bold');
-    pdf.text('Generated:', margin, yPosition);
-    pdf.setFont(undefined, 'normal');
-    pdf.text(new Date().toLocaleDateString(), margin + 30, yPosition);
-
-    yPosition += 15;
-
-    // Total Hours Box
-    pdf.setFillColor(37, 99, 235);
-    pdf.roundedRect(margin, yPosition, pageWidth - 2 * margin, 25, 3, 3, 'F');
-    
-    pdf.setTextColor(255, 255, 255);
-    pdf.setFontSize(14);
-    pdf.setFont(undefined, 'bold');
-    pdf.text('TOTAL WORKING HOURS', pageWidth / 2, yPosition + 10, { align: 'center' });
-    
-    pdf.setFontSize(20);
-    const totalHoursText = `${currentReportData.totalHours}h ${currentReportData.totalMinutes}m`;
-    pdf.text(totalHoursText, pageWidth / 2, yPosition + 20, { align: 'center' });
-
-    yPosition += 35;
-
-    // Capture chart as image
     try {
-        const chartCanvas = document.getElementById('hoursChart');
-        const chartImage = chartCanvas.toDataURL('image/png');
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF('p', 'mm', 'a4');
         
-        pdf.setTextColor(0, 0, 0);
-        pdf.setFontSize(14);
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        const margin = 20;
+        let yPosition = margin;
+
+        // Header with gradient effect
+        pdf.setFillColor(99, 102, 241);
+        pdf.rect(0, 0, pageWidth, 50, 'F');
+        
+        pdf.setTextColor(255, 255, 255);
+        pdf.setFontSize(32);
         pdf.setFont(undefined, 'bold');
-        pdf.text('Daily Distribution', margin, yPosition);
-        yPosition += 5;
+        pdf.text('WorkyFinder', margin, 25);
         
-        const chartWidth = pageWidth - 2 * margin;
-        const chartHeight = 60;
-        pdf.addImage(chartImage, 'PNG', margin, yPosition, chartWidth, chartHeight);
-        yPosition += chartHeight + 10;
+        pdf.setFontSize(14);
+        pdf.setFont(undefined, 'normal');
+        pdf.text('Working Hours Analytics Report', margin, 37);
 
-    } catch (err) {
-        console.error('Error capturing chart:', err);
-    }
+        yPosition = 65;
 
-    // Events Table
-    if (yPosition + 40 > pageHeight - margin) {
-        pdf.addPage();
-        yPosition = margin;
-    }
+        // Report Info Section
+        pdf.setTextColor(0, 0, 0);
+        pdf.setFontSize(11);
+        pdf.setFont(undefined, 'bold');
+        pdf.text('Calendar:', margin, yPosition);
+        pdf.setFont(undefined, 'normal');
+        pdf.text(currentReportData.calendarName, margin + 27, yPosition);
+        
+        yPosition += 8;
+        pdf.setFont(undefined, 'bold');
+        pdf.text('Period:', margin, yPosition);
+        pdf.setFont(undefined, 'normal');
+        pdf.text(currentReportData.monthName, margin + 27, yPosition);
+        
+        yPosition += 8;
+        pdf.setFont(undefined, 'bold');
+        pdf.text('Generated:', margin, yPosition);
+        pdf.setFont(undefined, 'normal');
+        pdf.text(new Date().toLocaleDateString('en-US', { 
+            month: 'long', 
+            day: 'numeric', 
+            year: 'numeric' 
+        }), margin + 27, yPosition);
 
-    pdf.setFontSize(14);
-    pdf.setFont(undefined, 'bold');
-    pdf.text('Events Breakdown', margin, yPosition);
-    yPosition += 8;
+        yPosition += 20;
 
-    // Table Header
-    pdf.setFillColor(248, 250, 252);
-    pdf.rect(margin, yPosition, pageWidth - 2 * margin, 8, 'F');
-    
-    pdf.setFontSize(9);
-    pdf.setFont(undefined, 'bold');
-    pdf.setTextColor(71, 85, 105);
-    pdf.text('DATE', margin + 2, yPosition + 5);
-    pdf.text('EVENT', margin + 40, yPosition + 5);
-    pdf.text('DURATION', pageWidth - margin - 25, yPosition + 5);
-    
-    yPosition += 10;
+        // Total Hours Box with gradient
+        pdf.setFillColor(99, 102, 241);
+        pdf.roundedRect(margin, yPosition, pageWidth - 2 * margin, 32, 5, 5, 'F');
+        
+        pdf.setTextColor(255, 255, 255);
+        pdf.setFontSize(15);
+        pdf.setFont(undefined, 'bold');
+        pdf.text('TOTAL WORKING HOURS', pageWidth / 2, yPosition + 12, { align: 'center' });
+        
+        pdf.setFontSize(24);
+        const totalHoursText = `${currentReportData.totalHours}h ${currentReportData.totalMinutes}m`;
+        pdf.text(totalHoursText, pageWidth / 2, yPosition + 25, { align: 'center' });
 
-    // Table Rows
-    pdf.setFont(undefined, 'normal');
-    pdf.setTextColor(0, 0, 0);
-    pdf.setFontSize(9);
-    
-    currentReportData.eventBreakdown.forEach((event, index) => {
-        if (yPosition > pageHeight - margin) {
+        yPosition += 42;
+
+        // Capture chart as image
+        try {
+            const chartCanvas = document.getElementById('hoursChart');
+            const chartImage = chartCanvas.toDataURL('image/png', 1.0);
+            
+            pdf.setTextColor(0, 0, 0);
+            pdf.setFontSize(15);
+            pdf.setFont(undefined, 'bold');
+            pdf.text('Daily Distribution', margin, yPosition);
+            yPosition += 8;
+            
+            const chartWidth = pageWidth - 2 * margin;
+            const chartHeight = 70;
+            
+            // Add border around chart
+            pdf.setDrawColor(229, 231, 235);
+            pdf.setLineWidth(0.5);
+            pdf.roundedRect(margin, yPosition, chartWidth, chartHeight, 3, 3, 'S');
+            
+            pdf.addImage(chartImage, 'PNG', margin + 2, yPosition + 2, chartWidth - 4, chartHeight - 4);
+            yPosition += chartHeight + 15;
+
+        } catch (err) {
+            console.error('Error capturing chart:', err);
+        }
+
+        // Events Table
+        if (yPosition + 50 > pageHeight - margin) {
             pdf.addPage();
             yPosition = margin;
         }
 
-        const duration = `${Math.floor(event.duration / 60)}h ${Math.round(event.duration % 60)}m`;
+        pdf.setFontSize(15);
+        pdf.setFont(undefined, 'bold');
+        pdf.text('Events Breakdown', margin, yPosition);
+        yPosition += 12;
+
+        // Table Header
+        pdf.setFillColor(248, 250, 252);
+        pdf.roundedRect(margin, yPosition, pageWidth - 2 * margin, 10, 2, 2, 'F');
         
-        pdf.text(event.date, margin + 2, yPosition);
+        pdf.setFontSize(9);
+        pdf.setFont(undefined, 'bold');
+        pdf.setTextColor(107, 114, 128);
+        pdf.text('DATE', margin + 4, yPosition + 7);
+        pdf.text('EVENT', margin + 45, yPosition + 7);
+        pdf.text('DURATION', pageWidth - margin - 30, yPosition + 7);
         
-        // Truncate long event names
-        let eventName = event.title;
-        if (eventName.length > 40) {
-            eventName = eventName.substring(0, 37) + '...';
+        yPosition += 14;
+
+        // Table Rows
+        pdf.setFont(undefined, 'normal');
+        pdf.setTextColor(17, 24, 39);
+        pdf.setFontSize(9);
+        
+        currentReportData.eventBreakdown.forEach((event, index) => {
+            if (yPosition > pageHeight - margin - 12) {
+                pdf.addPage();
+                yPosition = margin;
+                
+                // Repeat header on new page
+                pdf.setFillColor(248, 250, 252);
+                pdf.roundedRect(margin, yPosition, pageWidth - 2 * margin, 10, 2, 2, 'F');
+                pdf.setFontSize(9);
+                pdf.setFont(undefined, 'bold');
+                pdf.setTextColor(107, 114, 128);
+                pdf.text('DATE', margin + 4, yPosition + 7);
+                pdf.text('EVENT', margin + 45, yPosition + 7);
+                pdf.text('DURATION', pageWidth - margin - 30, yPosition + 7);
+                yPosition += 14;
+                pdf.setFont(undefined, 'normal');
+                pdf.setTextColor(17, 24, 39);
+            }
+
+            // Alternate row background
+            if (index % 2 === 0) {
+                pdf.setFillColor(249, 250, 251);
+                pdf.rect(margin, yPosition - 5, pageWidth - 2 * margin, 9, 'F');
+            }
+
+            const duration = `${Math.floor(event.duration / 60)}h ${Math.round(event.duration % 60)}m`;
+            
+            pdf.text(event.date, margin + 4, yPosition);
+            
+            // Truncate long event names
+            let eventName = event.title;
+            if (eventName.length > 48) {
+                eventName = eventName.substring(0, 45) + '...';
+            }
+            pdf.text(eventName, margin + 45, yPosition);
+            pdf.text(duration, pageWidth - margin - 30, yPosition);
+            
+            yPosition += 9;
+        });
+
+        // Footer on every page
+        const pageCount = pdf.internal.getNumberOfPages();
+        for (let i = 1; i <= pageCount; i++) {
+            pdf.setPage(i);
+            const footerY = pageHeight - 15;
+            pdf.setFontSize(8);
+            pdf.setTextColor(107, 114, 128);
+            pdf.text('Generated by WorkyFinder - Smart Working Hours Analytics', pageWidth / 2, footerY, { align: 'center' });
+            pdf.text(`Page ${i} of ${pageCount}`, pageWidth / 2, footerY + 5, { align: 'center' });
         }
-        pdf.text(eventName, margin + 40, yPosition);
-        pdf.text(duration, pageWidth - margin - 25, yPosition);
-        
-        yPosition += 7;
-    });
 
-    // Footer
-    const footerY = pageHeight - 15;
-    pdf.setFontSize(8);
-    pdf.setTextColor(100, 116, 139);
-    pdf.text('Generated by WorkyFinder', pageWidth / 2, footerY, { align: 'center' });
-    pdf.text(`Page 1 of ${pdf.internal.getNumberOfPages()}`, pageWidth / 2, footerY + 5, { align: 'center' });
+        // Save PDF
+        const fileName = `WorkyFinder_${currentReportData.monthName.replace(' ', '_')}.pdf`;
+        pdf.save(fileName);
 
-    // Save PDF
-    const fileName = `WorkingHours_${currentReportData.monthName.replace(' ', '_')}.pdf`;
-    pdf.save(fileName);
+    } catch (err) {
+        console.error('Error generating PDF:', err);
+        showError('Error generating PDF. Please try again.');
+    } finally {
+        // Reset button
+        pdfBtn.disabled = false;
+        pdfBtn.innerHTML = originalContent;
+    }
+}
+
+function showError(message) {
+    alert(message);
 }
