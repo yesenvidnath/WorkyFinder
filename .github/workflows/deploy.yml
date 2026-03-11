@@ -1,0 +1,56 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      
+      - name: Inject Google credentials
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        run: |
+          # Create env-loader.js with credentials
+          if [ -n "$GOOGLE_CLIENT_ID" ] && [ -n "$GOOGLE_API_KEY" ]; then
+            mkdir -p js
+            cat > js/env-loader.js << 'EOF'
+          window.__CONFIG__ = {
+              CLIENT_ID: "${{ secrets.GOOGLE_CLIENT_ID }}",
+              API_KEY: "${{ secrets.GOOGLE_API_KEY }}"
+          };
+          EOF
+            # Update index.html to load env-loader before config
+            if ! grep -q "env-loader.js" index.html; then
+              sed -i 's|<script src="js/config.js"></script>|<script src="js/env-loader.js"></script>\n    <script src="js/config.js"></script>|' index.html
+            fi
+          fi
+      
+      - name: Setup Pages
+        uses: actions/configure-pages@v3
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v2
+        with:
+          path: '.'
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v2

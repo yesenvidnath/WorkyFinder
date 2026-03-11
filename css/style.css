@@ -1,0 +1,78 @@
+body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+
+.navbar {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.navbar-brand i {
+    font-size: 1.4em;
+    vertical-align: middle;
+    margin-right: 0.3em;
+}
+
+.card {
+    border: none;
+    border-radius: 10px;
+    transition: transform 0.2s;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+}
+
+.btn {
+    padding: 0.6rem 1.5rem;
+    border-radius: 8px;
+}
+
+.btn i {
+    margin-right: 0.5rem;
+}
+
+#hours-result {
+    font-size: 2.5rem;
+    font-weight: 600;
+}
+
+.table {
+    font-size: 0.95rem;
+}
+
+.table th {
+    font-weight: 600;
+    color: #444;
+}
+
+.event-item {
+    padding: 10px;
+    border-radius: 6px;
+    margin-bottom: 8px;
+    background-color: #f8f9fa;
+    transition: background-color 0.2s;
+}
+
+.event-item:hover {
+    background-color: #e9ecef;
+}
+
+#port-badge {
+    font-size: 0.85rem;
+    padding: 0.5em 1em;
+}
+
+.stats-card {
+    background: linear-gradient(45deg, #4e73df 0%, #224abe 100%);
+    color: white;
+}
+
+.form-control, .form-select {
+    padding: 0.75rem;
+    border-radius: 8px;
+}
+
+.chart-container {
+    position: relative;
+    height: 300px;
+}
