@@ -1,5 +1,5 @@
 // Replace with your Google Calendar API credentials from Google Cloud Console
-const CLIENT_ID = '326493887178-t7aa6mtoa029uvcierqtjrtjb2k5gdu6.apps.googleusercontent.com';  
+const CLIENT_ID = '132463630327-f8r9nco0l5ff1dnoqlugrjdcl4u2sdrs.apps.googleusercontent.com';  
 const API_KEY = 'AIzaSyBOsa3UY8X-6d4tXAMSf2luIQTUJtU8G0c';       
 const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest';
 const SCOPES = 'https://www.googleapis.com/auth/calendar.readonly';
